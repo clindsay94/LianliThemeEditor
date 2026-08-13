@@ -541,6 +541,7 @@ internal static class Program
                 ["RootMembers"] = DescribeRootMembers(theme),
                 ["Width"] = Reflection.Get(theme, "width"),
                 ["Height"] = Reflection.Get(theme, "height"),
+                ["IsLandscape"] = Reflection.Get(theme, "isLanscape"),
                 ["ZoomRate"] = Reflection.Get(theme, "ZoomRate"),
                 ["VideoName"] = Reflection.Get(theme, "videoName"),
                 ["VideoPath"] = Reflection.Get(theme, "videoPath"),

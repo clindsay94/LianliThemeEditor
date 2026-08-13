@@ -1047,7 +1047,8 @@ public sealed class SupporterBridge : ISupporterBridge
             Background = GetValue(root, "Background"),
             BackgroundPath = GetValue(root, "BackgroundPath"),
             Width = GetIntValue(root, "Width"),
-            Height = GetIntValue(root, "Height")
+            Height = GetIntValue(root, "Height"),
+            IsLandscape = GetNullableBoolValue(root, "IsLandscape")
         };
 
         if (root.TryGetProperty("Layers", out var layers) && layers.ValueKind == JsonValueKind.Array)
@@ -1299,6 +1300,22 @@ public sealed class SupporterBridge : ISupporterBridge
             JsonValueKind.False => false,
             JsonValueKind.String => bool.TryParse(property.GetString(), out var parsed) && parsed,
             _ => false
+        };
+    }
+
+    private static bool? GetNullableBoolValue(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(property.GetString(), out var parsed) ? parsed : null,
+            _ => null
         };
     }
 
