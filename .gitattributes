@@ -1,0 +1,37 @@
+# This repository stores its text blobs with CRLF (that is how upstream committed
+# them). With core.autocrlf=true git strips CR before diffing, so every line of
+# every file compared as modified - MainWindow.xaml.cs showed a ~9000 line diff
+# for ~35 lines of real change.
+#
+# Disabling conversion outright is the fix. Renormalizing to LF instead would
+# rewrite ~37k lines plus templates/gallery.json, and because this is a fork it
+# would make every future merge from upstream conflict on every line.
+* -text
+
+# Assets served straight from this repo as the gallery CDN, plus BinaryFormatter
+# payloads. Marked binary so no tool is ever tempted to line-ending or diff them.
+*.template binary
+*.turtheme binary
+*.lltheme  binary
+*.zip      binary
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.bmp  binary
+*.gif  binary
+*.ico  binary
+
+*.ttf binary
+*.otf binary
+
+*.mp4  binary
+*.h264 binary
+*.avi  binary
+
+*.dll binary
+*.exe binary
+*.pdb binary
+
+# Nicer function context in C# hunks.
+*.cs diff=csharp
