@@ -1,6 +1,5 @@
 {
   "app": {
-    "title": "Lian Li LCD Template Editor V 1.7",
     "versionBuildFormat": "Версия {0}  |  Сборка {1}"
   },
   "common": {
