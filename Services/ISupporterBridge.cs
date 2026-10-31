@@ -19,7 +19,8 @@ public interface ISupporterBridge
     Task AddImageAsync(string deviceModel, string templatePath, string imagePath, string x, string y, string size, CancellationToken cancellationToken = default);
     Task AddClockAsync(string deviceModel, string templatePath, string imagePath, string dataSource, string centerX, string centerY, string size, string format, CancellationToken cancellationToken = default);
     Task AddGraphAsync(string deviceModel, string templatePath, string graphStyleCode, string dataSource, string x, string y, string size, string frontColor, string backColor, CancellationToken cancellationToken = default);
-    Task<string> SetBackgroundMediaAsync(string deviceModel, string templatePath, string mediaPath, int canvasWidth = 480, int canvasHeight = 480, CancellationToken cancellationToken = default);
+    Task<string> SetBackgroundMediaAsync(string deviceModel, string templatePath, string mediaPath, int canvasWidth = 480, int canvasHeight = 480, bool? landscape = null, CancellationToken cancellationToken = default);
+    Task SetOrientationAsync(string deviceModel, string templatePath, bool landscape, int canvasWidth, int canvasHeight, CancellationToken cancellationToken = default);
     Task<string> SetBackgroundRefsAsync(string deviceModel, string templatePath, string mediaPath, int canvasWidth = 480, int canvasHeight = 480, bool landscape = false, CancellationToken cancellationToken = default);
     Task UpdateThemePreviewAsync(string deviceModel, string templatePath, string imagePath, CancellationToken cancellationToken = default);
     Task UpdateAnimationPreviewBitmapsAsync(string deviceModel, string templatePath, string imagePath, CancellationToken cancellationToken = default);

@@ -621,6 +621,7 @@ public sealed class SupporterBridge : ISupporterBridge
         string mediaPath,
         int canvasWidth = 480,
         int canvasHeight = 480,
+        bool? landscape = null,
         CancellationToken cancellationToken = default)
     {
         var args = BaseTemplateArgs(deviceModel, templatePath);
@@ -631,6 +632,11 @@ public sealed class SupporterBridge : ISupporterBridge
             "-CanvasHeight", canvasHeight.ToString(),
             "-NoBackup"
         });
+        if (landscape is bool isLandscape)
+        {
+            args.AddRange(new[] { "-Landscape", isLandscape ? "true" : "false" });
+        }
+
         var output = await RunSupporterAsync(args, cancellationToken).ConfigureAwait(false);
         const string prefix = "BackgroundPath:";
         return output
@@ -639,6 +645,26 @@ public sealed class SupporterBridge : ISupporterBridge
             .Where(line => line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(line => line[prefix.Length..].Trim())
             .LastOrDefault() ?? "";
+    }
+
+    public async Task SetOrientationAsync(
+        string deviceModel,
+        string templatePath,
+        bool landscape,
+        int canvasWidth,
+        int canvasHeight,
+        CancellationToken cancellationToken = default)
+    {
+        var args = BaseTemplateArgs(deviceModel, templatePath);
+        args.AddRange(new[]
+        {
+            "-SetOrientation",
+            "-Landscape", landscape ? "true" : "false",
+            "-CanvasWidth", canvasWidth.ToString(),
+            "-CanvasHeight", canvasHeight.ToString(),
+            "-NoBackup"
+        });
+        await RunSupporterAsync(args, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<string> SetBackgroundRefsAsync(

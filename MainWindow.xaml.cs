@@ -352,7 +352,10 @@ public partial class MainWindow : Window
     private bool _editorUndoArmed;
     private readonly HashSet<string> _lockedLayerKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<LayerRow> _dirtyLayers = new();
-    private Dictionary<string, LayerRow>? _pendingDirtyLayersAfterAdd;
+    private DirtyLayerSnapshot? _pendingDirtyLayersAfterAdd;
+    private readonly Dictionary<LayerRow, long> _layerEditStamps = new();
+    private long _layerEditCounter;
+    private string _undoHistoryTemplatePath = "";
     private bool _soloSelectedLayers;
     private bool _groupingEnabled = true;
     private bool _savingGroupingMetadata;
@@ -441,6 +444,9 @@ public partial class MainWindow : Window
     private bool _syncingThemeCombo;
     private bool _syncingLanguageCombo;
     private bool _syncingUniversalOrientation;
+    // Combo choice not yet committed by Apply Orientation; reloads of the same template keep it over the stale isLanscape flag.
+    private string _userOrientationOverride = "";
+    private string _userOrientationOverrideTemplatePath = "";
     private double _templateCanvasWidth = 480.0;
     private double _templateCanvasHeight = 480.0;
     private double _previewCanvasWidth = 240.0;
@@ -1442,6 +1448,18 @@ public partial class MainWindow : Window
                         destinationPath,
                         layer.ToString(CultureInfo.InvariantCulture));
                 }
+            }
+
+            if (SupportsOrientationSelection(deviceModel) && !string.IsNullOrWhiteSpace(requestedOrientation))
+            {
+                var canvas = GetDeviceCanvasPixels(deviceModel, requestedOrientation);
+                await _supporter.SetOrientationAsync(
+                    deviceModel,
+                    destinationPath,
+                    requestedOrientation == "landscape",
+                    canvas.Width,
+                    canvas.Height);
+                ClearUserOrientationOverride();
             }
 
             var result = await _supporter.LoadTemplatePathAsync(deviceModel, destinationPath);
@@ -2851,6 +2869,19 @@ public partial class MainWindow : Window
     {
         var wasLoading = _isLoading;
         System.Threading.Interlocked.Increment(ref _loadingDepth);
+        // Snapshots are index-based, so history survives only property-only reloads of the same template.
+        if (!string.Equals(_undoHistoryTemplatePath, result.TemplatePath, StringComparison.OrdinalIgnoreCase) ||
+            !Layers.Select(layer => layer.Type).SequenceEqual(result.Layers.Select(layer => layer.Type), StringComparer.OrdinalIgnoreCase))
+        {
+            _undoStack.Clear();
+            _redoStack.Clear();
+            _undoHistoryTemplatePath = result.TemplatePath;
+            UpdateHistoryButtons();
+        }
+        if (!string.Equals(_userOrientationOverrideTemplatePath, result.TemplatePath, StringComparison.OrdinalIgnoreCase))
+        {
+            ClearUserOrientationOverride();
+        }
         _selectedBackgroundSourcePath = "";
         _currentTemplatePath = result.TemplatePath;
         _currentTemplateId = result.TemplateId;
@@ -2879,6 +2910,7 @@ public partial class MainWindow : Window
         _gdiTextInkCache.Clear();
         _gdiTextLayerCache.Clear();
         _dirtyLayers.Clear();
+        _layerEditStamps.Clear();
         _pendingLayerMoves.Clear();
         _pendingLayerDuplicates.Clear();
         _pendingLayerDeletes.Clear();
@@ -2981,6 +3013,7 @@ public partial class MainWindow : Window
             if (SupportsOrientationSelectionSelected())
             {
                 templateOrientation = FirstNonEmpty(
+                    GetUserOrientationOverride(result.TemplatePath),
                     InferUniversalOrientationFromTemplateFlag(result),
                     InferUniversalOrientationFromCanvas(result.Width, result.Height),
                     TryInferUniversalOrientationFromBackgroundPath(result.BackgroundPath),
@@ -3769,9 +3802,13 @@ public partial class MainWindow : Window
 
         layer.IsDirty = true;
         _dirtyLayers.Add(layer);
+        _layerEditStamps[layer] = ++_layerEditCounter;
         _autoSaveTimer.Stop();
         _autoSaveTimer.Start();
     }
+
+    private long GetLayerEditStamp(LayerRow layer) =>
+        _layerEditStamps.TryGetValue(layer, out var stamp) ? stamp : 0;
 
     private void ClearDirtyLayers()
     {
@@ -4620,7 +4657,8 @@ public partial class MainWindow : Window
 
     private async Task MoveSelectedLayerAsync(string direction)
     {
-        await ForceSyncPendingStructuralChangesAsync(moves: false, deletes: true, duplicates: true);
+        // Flush every queue so disk and UI indexes agree; otherwise the structure check below reloads and drops edits.
+        await ForceSyncPendingStructuralChangesAsync(moves: true, deletes: true, duplicates: true);
         if (LayerGrid.SelectedItem is not LayerRow layer || !int.TryParse(layer.Index, out var idx)) return;
 
         int targetIdx = direction == "Up" ? idx - 1 : idx + 1;
@@ -4651,9 +4689,12 @@ public partial class MainWindow : Window
             SwapShadowLinksForLayerMove(idx, targetIdx);
             SaveEditorSettings();
 
+            var pendingEdits = SnapshotDirtyLayerStates();
+            RemapDirtyLayerStateIndexes(pendingEdits, SwapIndexMap(idx, targetIdx));
             await LoadLayersAsync(true);
+            RestoreDirtyLayerStates(pendingEdits);
 
-            var movedLayer = Layers.FirstOrDefault(l => l.Index == targetIdx.ToString());
+            var movedLayer =Layers.FirstOrDefault(l => l.Index == targetIdx.ToString());
             if (movedLayer != null)
             {
                 LayerGrid.SelectedItem = movedLayer;
@@ -4671,6 +4712,18 @@ public partial class MainWindow : Window
 
     private async Task MoveSelectedLayersOneStepAsync(string direction)
     {
+        try
+        {
+            // Flush every queue so disk and UI indexes agree before indexes are read below.
+            await ForceSyncPendingStructuralChangesAsync(moves: true, deletes: true, duplicates: true);
+        }
+        catch (Exception ex)
+        {
+            SetBusy(false, GetLanguageText("status.moveFailed", "Move failed."));
+            MessageBox.Show(this, ex.Message, GetLanguageText("messages.moveFailed", "Move failed"), MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
         var selected = GetSelectedLayers(includeLocked: true, includeAnimation: false)
             .Select(layer => new { Layer = layer, Index = int.TryParse(layer.Index, out var index) ? index : -1 })
             .Where(item => item.Index >= 0)
@@ -4692,6 +4745,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            var appliedSwaps = new List<(int From, int To)>();
             foreach (var item in ordered)
             {
                 var currentIndex = int.TryParse(item.Layer.Index, out var liveIndex) ? liveIndex : item.Index;
@@ -4716,6 +4770,7 @@ public partial class MainWindow : Window
                     currentIndex.ToString(),
                     direction));
                 SwapShadowLinksForLayerMove(currentIndex, targetIndex);
+                appliedSwaps.Add((currentIndex, targetIndex));
             }
 
             SaveEditorSettings();
@@ -4723,7 +4778,13 @@ public partial class MainWindow : Window
                 .Select(item => direction.Equals("Down", StringComparison.OrdinalIgnoreCase) ? item.Index + 1 : item.Index - 1)
                 .Where(index => index >= 0)
                 .ToHashSet();
+            var pendingEdits = SnapshotDirtyLayerStates();
+            foreach (var swap in appliedSwaps)
+            {
+                RemapDirtyLayerStateIndexes(pendingEdits, SwapIndexMap(swap.From, swap.To));
+            }
             await LoadLayersAsync(true);
+            RestoreDirtyLayerStates(pendingEdits);
             LayerGrid.SelectedItems.Clear();
             foreach (var layer in Layers.Where(layer => int.TryParse(layer.Index, out var index) && selectedIndexes.Contains(index)))
             {
@@ -4969,6 +5030,7 @@ public partial class MainWindow : Window
 
         try
         {
+            await ForceSyncPendingStructuralChangesAsync(moves: true, deletes: true, duplicates: true);
             var backgroundStopwatch = Stopwatch.StartNew();
             SetBusy(true, GetLanguageText("status.backgroundPreparing", "Preparing background media..."));
             
@@ -5017,6 +5079,7 @@ public partial class MainWindow : Window
                     canvas.Height,
                     string.Equals(NormalizeUniversalOrientation(orientation), "landscape", StringComparison.OrdinalIgnoreCase),
                     backgroundCts.Token);
+                ClearUserOrientationOverride();
                 await Task.Run(() => TryClearTemplateBackgroundProfile(
                     templateIdBeforeBackgroundChange,
                     deviceModel));
@@ -5107,7 +5170,10 @@ public partial class MainWindow : Window
             }
 
             var refreshed = await _supporter.LoadTemplatePathAsync(deviceModel, templatePath);
+            // Property editors stay enabled through the long job, so edits are captured only now.
+            var pendingEdits = SnapshotDirtyLayerStates();
             ApplyTemplateResult(refreshed);
+            RestoreDirtyLayerStates(pendingEdits);
             _selectedBackgroundSourcePath = mediaPath;
             _currentBackgroundPath = backgroundForLConnect;
             var animationLayer = Layers.FirstOrDefault(layer =>
@@ -5544,8 +5610,10 @@ public partial class MainWindow : Window
     private async Task RefreshEditorFromAppliedTemplateAsync(string deviceModel, string templatePath, string preferredIndex)
     {
         var refreshed = await Task.Run(() => _supporter.LoadTemplatePathAsync(deviceModel, templatePath, inspectBitmaps: false));
+        var stillDirty = SnapshotDirtyLayerStates();
         ApplyTemplateResult(refreshed);
         ClearDirtyLayers();
+        RestoreDirtyLayerStates(stillDirty);
 
         if (!string.IsNullOrWhiteSpace(preferredIndex))
         {
@@ -5715,6 +5783,7 @@ public partial class MainWindow : Window
             $"ApplyDirtyLayers worker start. device={deviceModel}; template={Path.GetFileName(templatePath)}; " +
             $"layers={layersToApply.Count}; includePaired={includePairedLayers}; [{layerSummary}]");
         var workerStopwatch = Stopwatch.StartNew();
+        var appliedEditStamps = layersToApply.ToDictionary(layer => layer, GetLayerEditStamp);
         await ApplyLayersToResolvedTemplateTargetsAsync(deviceModel, templatePath, layersToApply);
         AppLogger.Info(
             $"ApplyDirtyLayers worker completed in {workerStopwatch.ElapsedMilliseconds} ms; " +
@@ -5723,6 +5792,12 @@ public partial class MainWindow : Window
 
         foreach (var layer in layersToApply)
         {
+            // The worker serialized the layer before awaiting; an edit made since then is not on disk yet.
+            if (GetLayerEditStamp(layer) != appliedEditStamps[layer])
+            {
+                continue;
+            }
+
             layer.OriginalGraphStyle = layer.GraphStyle;
             layer.OriginalDataSource = layer.DataSource;
             layer.IsDirty = false;
@@ -6367,12 +6442,20 @@ public partial class MainWindow : Window
                 try
                 {
                     var canvas = GetTemplateCanvasPixels();
+                    bool? landscape = SupportsOrientationSelection(deviceModel)
+                        ? canvas.Width >= canvas.Height
+                        : null;
                     await Task.Run(() => _supporter.SetBackgroundMediaAsync(
                         deviceModel,
                         templatePath,
                         _currentBackgroundPath,
                         canvas.Width,
-                        canvas.Height));
+                        canvas.Height,
+                        landscape));
+                    if (landscape.HasValue)
+                    {
+                        ClearUserOrientationOverride();
+                    }
                 }
                 catch (Exception ex) { AppLogger.Error("Saved shadow links could not be read.", ex); }
             }
@@ -8812,28 +8895,101 @@ public partial class MainWindow : Window
 
     private void CapturePendingDirtyLayersBeforeAdd()
     {
-        Dispatcher.Invoke(() => {
-            if (LayerGrid.SelectedItem is LayerRow selected && _dirtyLayers.Contains(selected))
-            {
-                UpdateLayerFromInputs(selected);
-            }
-        });
-        _pendingDirtyLayersAfterAdd = _dirtyLayers
-            .Where(layer => Layers.Contains(layer) && !layer.IsEditorMetadata)
-            .ToDictionary(layer => layer.Index, CloneLayerState, StringComparer.OrdinalIgnoreCase);
+        _pendingDirtyLayersAfterAdd = SnapshotDirtyLayerStates();
     }
 
     private void RestorePendingDirtyLayersAfterAdd()
     {
-        if (_pendingDirtyLayersAfterAdd == null) return;
-        foreach (var pair in _pendingDirtyLayersAfterAdd)
+        var snapshot = _pendingDirtyLayersAfterAdd;
+        _pendingDirtyLayersAfterAdd = null;
+        RestoreDirtyLayerStates(snapshot);
+    }
+
+    private sealed class DirtyLayerSnapshot
+    {
+        public Dictionary<string, LayerRow> StatesByIndex { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<LayerRow> CapturedLayers { get; } = new();
+    }
+
+    // Reloads clear _dirtyLayers, so callers that write then reload carry edits across by index (remapped through any reorder).
+    private DirtyLayerSnapshot? SnapshotDirtyLayerStates()
+    {
+        if (LayerGrid.SelectedItem is LayerRow selected && _dirtyLayers.Contains(selected))
+        {
+            UpdateLayerFromInputs(selected);
+        }
+
+        var snapshot = new DirtyLayerSnapshot();
+        foreach (var layer in _dirtyLayers.Where(layer =>
+                     Layers.Contains(layer) &&
+                     !layer.IsEditorMetadata &&
+                     !string.IsNullOrWhiteSpace(layer.Index)))
+        {
+            var state = CloneLayerState(layer);
+            state.Type = layer.Type;
+            snapshot.StatesByIndex[layer.Index] = state;
+            snapshot.CapturedLayers.Add(layer);
+        }
+
+        return snapshot.StatesByIndex.Count == 0 ? null : snapshot;
+    }
+
+    private static void RemapDirtyLayerStateIndexes(DirtyLayerSnapshot? snapshot, Func<int, int> map)
+    {
+        if (snapshot == null) return;
+        var remapped = snapshot.StatesByIndex
+            .Select(pair => int.TryParse(pair.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
+                ? new KeyValuePair<string, LayerRow>(map(index).ToString(CultureInfo.InvariantCulture), pair.Value)
+                : pair)
+            .ToList();
+        snapshot.StatesByIndex.Clear();
+        foreach (var pair in remapped)
+        {
+            snapshot.StatesByIndex[pair.Key] = pair.Value;
+        }
+    }
+
+    private static Func<int, int> SwapIndexMap(int first, int second) =>
+        index => index == first ? second : index == second ? first : index;
+
+    private void RestoreDirtyLayerStates(DirtyLayerSnapshot? snapshot)
+    {
+        if (snapshot == null) return;
+        var restoredSelected = false;
+        foreach (var pair in snapshot.StatesByIndex)
         {
             var target = Layers.FirstOrDefault(layer => string.Equals(layer.Index, pair.Key, StringComparison.OrdinalIgnoreCase));
-            if (target == null) continue;
+            // A captured instance still in the list means the reload did not happen; its edits are intact.
+            if (target == null ||
+                snapshot.CapturedLayers.Contains(target) ||
+                target.IsEditorMetadata ||
+                !string.Equals(target.Type, pair.Value.Type, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Keep the reloaded layer's identity so a later Apply writes to its current template slot.
+            var sourceLayerIndex = target.SourceLayerIndex;
+            var sourceTemplatePath = target.SourceTemplatePath;
+            var sourceTemplateId = target.SourceTemplateId;
+            var sourceOffsetX = target.SourceOffsetX;
+            var parentThemeIndex = target.ParentThemeIndex;
+            var isLocked = target.IsLocked;
             CopyLayerState(pair.Value, target);
+            target.SourceLayerIndex = sourceLayerIndex;
+            target.SourceTemplatePath = sourceTemplatePath;
+            target.SourceTemplateId = sourceTemplateId;
+            target.SourceOffsetX = sourceOffsetX;
+            target.ParentThemeIndex = parentThemeIndex;
+            target.IsLocked = isLocked;
             MarkLayerDirty(target);
+            restoredSelected |= ReferenceEquals(LayerGrid.SelectedItem, target);
         }
-        _pendingDirtyLayersAfterAdd = null;
+
+        if (restoredSelected)
+        {
+            PopulateEditorFromSelection();
+        }
         DrawPreview();
     }
 
@@ -9418,16 +9574,31 @@ public partial class MainWindow : Window
 
     private async Task DuplicateLayerGroupAsync(LayerGroup sourceGroup)
     {
-        var members = Layers.Where(layer => layer.GroupId == sourceGroup.Id && !layer.IsEditorMetadata)
-            .OrderBy(layer => int.TryParse(layer.Index, out var index) ? index : int.MaxValue).ToList();
-        if (members.Count == 0) return;
+        if (!Layers.Any(layer => layer.GroupId == sourceGroup.Id && !layer.IsEditorMetadata)) return;
         try
         {
+            // Queued deletes/moves/duplicates leave UI indexes ahead of disk; flush so layer.Index is the on-disk slot.
+            await ForceSyncPendingStructuralChangesAsync(moves: true, deletes: true, duplicates: true);
+            var members = Layers.Where(layer => layer.GroupId == sourceGroup.Id && !layer.IsEditorMetadata)
+                .OrderBy(layer => int.TryParse(layer.Index, out var index) ? index : int.MaxValue).ToList();
+            if (members.Count == 0) return;
             SetBusy(true, GetLanguageText("status.duplicatingGroup", "Duplicating group..."));
             var target = await ResolveTemplateTargetAsync();
+            var duplicatedIndexes = new List<int>();
             foreach (var layer in members.OrderByDescending(layer => int.TryParse(layer.Index, out var index) ? index : -1))
+            {
                 await _supporter.DuplicateLayerAsync(target.DeviceModel, target.TemplatePath, layer.Index);
+                if (int.TryParse(layer.Index, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sourceIndex))
+                {
+                    duplicatedIndexes.Add(sourceIndex);
+                }
+            }
+
+            // Each copy lands right after its source, shifting every later layer down by one.
+            var pendingEdits = SnapshotDirtyLayerStates();
+            RemapDirtyLayerStateIndexes(pendingEdits, index => index + duplicatedIndexes.Count(source => source < index));
             await LoadLayersAsync(true);
+            RestoreDirtyLayerStates(pendingEdits);
             var duplicateMembers = Layers.Where(layer => !layer.IsEditorMetadata && string.IsNullOrWhiteSpace(layer.GroupId))
                 .OrderByDescending(layer => int.TryParse(layer.Index, out var index) ? index : -1)
                 .Take(members.Count).ToList();
@@ -14597,12 +14768,31 @@ public partial class MainWindow : Window
             return;
         }
 
-        SyncUniversalOrientationCombo(IsUniversalLandscape() ? "landscape" : "portrait");
+        var orientation = IsUniversalLandscape() ? "landscape" : "portrait";
+        if (!string.IsNullOrWhiteSpace(_currentTemplatePath))
+        {
+            _userOrientationOverride = orientation;
+            _userOrientationOverrideTemplatePath = _currentTemplatePath;
+        }
+
+        SyncUniversalOrientationCombo(orientation);
         UpdateCanvasConfiguration(resetZoom: false);
         RefreshBackgroundPreviewAfterOrientationChange();
         _gdiTextLayerCache.Clear();
         DrawPreview();
         SaveEditorSettings();
+    }
+
+    private string GetUserOrientationOverride(string? templatePath) =>
+        !string.IsNullOrWhiteSpace(_userOrientationOverride) &&
+        string.Equals(_userOrientationOverrideTemplatePath, templatePath, StringComparison.OrdinalIgnoreCase)
+            ? _userOrientationOverride
+            : "";
+
+    private void ClearUserOrientationOverride()
+    {
+        _userOrientationOverride = "";
+        _userOrientationOverrideTemplatePath = "";
     }
 
     private async void ApplyOrientationButton_Click(object sender, RoutedEventArgs e)
@@ -14682,7 +14872,8 @@ public partial class MainWindow : Window
                         newTemplatePath,
                         Path.GetFileName(appliedBackgroundPath),
                         canvas.Width,
-                        canvas.Height);
+                        canvas.Height,
+                        landscape: orientation == "landscape");
                 }
                 finally
                 {
@@ -14692,7 +14883,18 @@ public partial class MainWindow : Window
                     }
                 }
             }
+            else
+            {
+                var canvas = GetDeviceCanvasPixels(deviceModel, orientation);
+                await _supporter.SetOrientationAsync(
+                    deviceModel,
+                    newTemplatePath,
+                    orientation == "landscape",
+                    canvas.Width,
+                    canvas.Height);
+            }
 
+            ClearUserOrientationOverride();
             var result = await _supporter.LoadTemplatePathAsync(deviceModel, newTemplatePath);
             UseActiveCheck.IsChecked = false;
             TemplateIdBox.Text = newTemplateId;
@@ -14823,7 +15025,9 @@ public partial class MainWindow : Window
                 var refreshed = await Task.Run(() => _supporter.LoadTemplatePathAsync(
                     target.DeviceModel,
                     target.TemplatePath));
+                var editedDuringApply = SnapshotDirtyLayerStates();
                 ApplyTemplateResult(refreshed);
+                RestoreDirtyLayerStates(editedDuringApply);
             }
 
             var templateId = FirstNonEmpty(_currentTemplateId, Path.GetFileNameWithoutExtension(target.TemplatePath));
@@ -14878,7 +15082,9 @@ public partial class MainWindow : Window
                 var refreshed = await Task.Run(() => _supporter.LoadTemplatePathAsync(
                     target.DeviceModel,
                     target.TemplatePath));
+                var editedDuringApply = SnapshotDirtyLayerStates();
                 ApplyTemplateResult(refreshed);
+                RestoreDirtyLayerStates(editedDuringApply);
             }
 
             var templateId = FirstNonEmpty(_currentTemplateId, Path.GetFileNameWithoutExtension(target.TemplatePath));
@@ -17044,6 +17250,7 @@ public partial class MainWindow : Window
             if (IsWideScreenDeviceModel(option.DeviceModel))
             {
                 var orientation = FirstNonEmpty(
+                    GetUserOrientationOverride(result.TemplatePath),
                     InferUniversalOrientationFromTemplateFlag(result),
                     InferUniversalOrientationFromCanvas(result.Width, result.Height),
                     TryInferUniversalOrientationFromBackgroundPath(result.BackgroundPath),
@@ -19207,8 +19414,26 @@ public partial class MainWindow : Window
 
         var importedBackgroundPath = "";
         var hasPackageBackgroundBundle = false;
+        var importOrientation = NormalizeUniversalOrientation(manifest.UniversalOrientation);
         try
         {
+            if (string.IsNullOrWhiteSpace(backgroundTemp) ||
+                (!string.IsNullOrWhiteSpace(preservedPackageBackgroundPath) && File.Exists(preservedPackageBackgroundPath)))
+            {
+                // These branches skip SetBackgroundRefs, so the packaged isLanscape/size would otherwise survive unchecked.
+                if (SupportsOrientationSelection(deviceModel) && !string.IsNullOrWhiteSpace(importOrientation))
+                {
+                    var orientationCanvas = GetDeviceCanvasPixels(deviceModel, importOrientation);
+                    await _supporter.SetOrientationAsync(
+                        deviceModel,
+                        destinationTemplate,
+                        importOrientation == "landscape",
+                        orientationCanvas.Width,
+                        orientationCanvas.Height);
+                    ClearUserOrientationOverride();
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(backgroundTemp))
             {
                 hasPackageBackgroundBundle = packageBackgroundBundle.Count > 0;
@@ -30427,7 +30652,8 @@ private static string CreateExportPackageBaseName(string templateId)
             return;
         }
 
-        if (Keyboard.Modifiers == ModifierKeys.Control)
+        // A focused text field keeps its own Ctrl+Z/Ctrl+Y instead of rolling back whole layers.
+        if (Keyboard.Modifiers == ModifierKeys.Control && Keyboard.FocusedElement is not TextBoxBase)
         {
             if (e.Key == Key.Z)
             {

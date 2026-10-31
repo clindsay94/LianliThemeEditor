@@ -367,6 +367,14 @@ internal static class Program
                 return;
             }
 
+            if (_args.Has("SetOrientation"))
+            {
+                SetOrientation(theme);
+                TemplateSerializer.Save(theme, _templatePath);
+                Console.WriteLine("Updated: " + _templatePath);
+                return;
+            }
+
             if (_args.HasValue("AddAnimation"))
             {
                 AddAnimation(theme, _args.Get("AddAnimation"));
@@ -469,6 +477,24 @@ internal static class Program
                     return;
                 }
             }
+        }
+
+        private bool? GetLandscapeArg()
+        {
+            if (!_args.Has("Landscape")) return null;
+            // A bare -Landscape flag has no value, which GetBool would read as false.
+            return !_args.HasValue("Landscape") || _args.GetBool("Landscape", true);
+        }
+
+        private void SetOrientation(object theme)
+        {
+            var landscape = GetLandscapeArg() ?? false;
+            var canvasWidth = GetCanvasDimension("CanvasWidth", landscape ? 1920 : 480);
+            var canvasHeight = GetCanvasDimension("CanvasHeight", landscape ? 480 : 1920);
+            Reflection.TrySet(theme, "isLanscape", landscape);
+            Reflection.TrySet(theme, "width", canvasWidth);
+            Reflection.TrySet(theme, "height", canvasHeight);
+            Console.WriteLine("Orientation: " + (landscape ? "Landscape" : "Portrait") + " " + canvasWidth + "x" + canvasHeight);
         }
 
         private int GetCanvasDimension(string name, int fallback)
@@ -1662,6 +1688,8 @@ internal static class Program
 
             Reflection.TrySet(theme, "width", canvasWidth);
             Reflection.TrySet(theme, "height", canvasHeight);
+            if (GetLandscapeArg() is bool landscape)
+                Reflection.TrySet(theme, "isLanscape", landscape);
 
             Reflection.TrySet(theme, "videoName", Path.GetFileName(path));
             var themeMediaPath = Path.ChangeExtension(path, ".h264");
@@ -1729,7 +1757,7 @@ internal static class Program
             var fileName = Path.GetFileName(mediaPath);
             Reflection.TrySet(theme, "width", _args.GetInt("CanvasWidth", 480));
             Reflection.TrySet(theme, "height", _args.GetInt("CanvasHeight", 1920));
-            Reflection.TrySet(theme, "isLanscape", _args.GetBool("Landscape", false));
+            Reflection.TrySet(theme, "isLanscape", GetLandscapeArg() ?? false);
             Reflection.TrySet(theme, "videoName", fileName);
             foreach (var name in new[] { "videoPath", "o_videoPath", "videoPath2", "videoPath3" })
             {
