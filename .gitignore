@@ -8,11 +8,8 @@ release/
 artifacts/
 outputs/
 tmp/
-tmp_*/
 
 # User/local state
-Backups/
-_project-archive/
 *.user
 *.suo
 *.rsuser
@@ -26,22 +23,10 @@ _project-archive/
 AGENTS.md
 .claude/skills/gitnexus/
 
-# Local investigation/work artifacts
-compare_extract/
-dim_probe/
-gallery_fix_work/
-lc_v2_repack/
-lc_v2_verify_idnamed/
-themePic_local_fix/
-video_work/
-tmp_video_frames/
-tmp_video_frames_cv2/
-active_*.json
+# Local scratch and tool caches
 tmp_*
-firmwares-*.json
-*.fw
-extracted_from_lianli88*.png
-PhoneLinkWeb/wwwroot/styles.old.css
+# Upstream commits its Cloudflare Wrangler cache (hundreds of MB of blobs)
+.wrangler/
 
 # Logs and diagnostics
 *.log
