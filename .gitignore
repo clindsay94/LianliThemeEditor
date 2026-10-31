@@ -57,3 +57,4 @@ Desktop.ini
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.token-savior-cache.json
