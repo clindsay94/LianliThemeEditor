@@ -1,3 +1,5 @@
+using LConnectPaths = ThemeEditorCSharp.Services.LConnectPaths;
+
 namespace PhoneControl;
 
 public sealed class PreviewFileService

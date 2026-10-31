@@ -68,7 +68,7 @@ Tabs are `x:Name`d in `MainWindow.xaml`: `EditorTab`, `GalleryTab`, `LocalThemes
 - **Control API** — `Services/LConnectClientService.cs` talks to the local L-Connect service over HTTP at `127.0.0.1:11021` (with port discovery fallback), and probes two request shapes (`Legacy` and `OfficialCompatible`) because L-Connect's protocol differs across builds. The working port+mode is cached.
 - **ffmpeg** — video/H.264 background work shells out to L-Connect's bundled `x64\ffmpeg.exe`; the app does not ship its own.
 - **Misspelled engine members** — `Services/ThemeEngineNames.cs` pins ThemeEngine field names that are typos upstream (`totalAngel`, `ration`). Keep using the constants; do not "fix" the spelling.
-- `IntegratedPhoneControl/LConnectClient.cs` and `IntegratedPhoneControl/LConnectPaths.cs` are a **deliberate second copy** of this logic under `namespace PhoneControl`, kept independent of the WPF services. Fixes to L-Connect protocol behavior usually need to be applied in both places.
+- `IntegratedPhoneControl/LConnectClient.cs` is a second copy of `LConnectClientService`'s protocol logic under `namespace PhoneControl` (it predates the Phone Link merge into this assembly). Fixes to L-Connect protocol behavior usually need to be applied in both places. Install-path resolution is shared: PhoneControl files alias `ThemeEditorCSharp.Services.LConnectPaths`.
 
 ## Gallery: this repo is the CDN
 
