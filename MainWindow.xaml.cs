@@ -399,6 +399,7 @@ public partial class MainWindow : Window
     private bool _trayIconVisible;
     private DrawingIcon? _trayDrawingIcon;
     private bool _forceClose;
+    private bool _unappliedWorkConfirmedForClose;
     private bool _wasLivePreviewTimerRunningBeforeTray;
     private bool _backgroundPreviewPausedBeforeTray;
     private readonly LayerGroupService _layerGroupService = new();
@@ -5157,6 +5158,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Closing throws away _dirtyLayers and every pending queue, and Apply is a manual step,
+        // so ask before dropping them. Closing is cancelled and re-issued rather than handled
+        // inline because awaiting inside a Closing handler cannot hold off the close itself.
+        if (!_unappliedWorkConfirmedForClose && HasUnappliedWork())
+        {
+            e.Cancel = true;
+            if (!await ConfirmUnappliedWorkAsync(
+                    GetLanguageText("messages.closingDiscards", "Closing the editor drops them.")))
+            {
+                return;
+            }
+
+            _unappliedWorkConfirmedForClose = true;
+            Close();
+            return;
+        }
+
         if (_phoneLinkServer?.IsRunning == true)
         {
             e.Cancel = true;
@@ -5540,6 +5558,61 @@ public partial class MainWindow : Window
         _pendingLayerMoves.Count > 0 ||
         _pendingLayerDuplicates.Count > 0 ||
         _pendingLayerDeletes.Count > 0;
+
+    private bool HasUnappliedWork() => _dirtyLayers.Count > 0 || HasPendingStructuralChanges();
+
+    private string DescribeUnappliedWork()
+    {
+        var parts = new List<string>();
+        if (_dirtyLayers.Count > 0)
+            parts.Add(FormatLanguageText("pending.editedLayers", "{0} edited layer(s)", _dirtyLayers.Count));
+        if (_pendingLayerDeletes.Count > 0)
+            parts.Add(FormatLanguageText("pending.deletes", "{0} queued deletion(s)", _pendingLayerDeletes.Count));
+        if (_pendingLayerMoves.Count > 0)
+            parts.Add(FormatLanguageText("pending.moves", "{0} queued reorder(s)", _pendingLayerMoves.Count));
+        if (_pendingLayerDuplicates.Count > 0)
+            parts.Add(FormatLanguageText("pending.duplicates", "{0} queued duplicate(s)", _pendingLayerDuplicates.Count));
+        return string.Join(", ", parts);
+    }
+
+    // Every path that reloads the editor wipes _dirtyLayers and the pending queues, so anything
+    // not yet applied is silently lost. Ask first. Returns false when the caller must abort.
+    private async Task<bool> ConfirmUnappliedWorkAsync(string actionDescription)
+    {
+        if (!HasUnappliedWork())
+        {
+            return true;
+        }
+
+        var message = FormatLanguageText(
+            "messages.unappliedWorkConfirm",
+            "You have unapplied changes: {0}.\n\n{1}\n\nYes = apply them first, No = discard them, Cancel = stay here.",
+            DescribeUnappliedWork(),
+            actionDescription);
+
+        var choice = MessageBox.Show(
+            this,
+            message,
+            GetLanguageText("messages.unappliedWorkTitle", "Unapplied changes"),
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (choice == MessageBoxResult.Cancel)
+        {
+            AppLogger.Info($"Unapplied work prompt cancelled. {DescribeUnappliedWork()}; action={actionDescription}");
+            return false;
+        }
+
+        if (choice == MessageBoxResult.Yes)
+        {
+            var target = await ResolveTemplateTargetAsync();
+            await ApplyDirtyLayersAsync(target.DeviceModel, target.TemplatePath);
+            return true;
+        }
+
+        AppLogger.Info($"Unapplied work discarded by user. {DescribeUnappliedWork()}; action={actionDescription}");
+        return true;
+    }
 
     private async Task RefreshEditorFromAppliedTemplateAsync(string deviceModel, string templatePath, string preferredIndex)
     {
@@ -14452,11 +14525,43 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!await ConfirmUnappliedWorkAsync(
+                FormatLanguageText(
+                    "messages.switchingTemplateDiscards",
+                    "Switching to template \"{0}\" reloads the editor and drops them.",
+                    option.Id)))
+        {
+            RevertTemplateSelection(e);
+            return;
+        }
+
         UseActiveCheck.IsChecked = false;
         TemplateIdBox.Text = option.Id;
         _currentTemplatePath = option.Path;
         AppLogger.Info($"Template selection loading: device={GetSelectedDeviceModel()}; template={option.Id}; path={option.Path}");
         await LoadLayersAsync(true);
+    }
+
+    private void RevertTemplateSelection(SelectionChangedEventArgs e)
+    {
+        if (e.RemovedItems.OfType<TemplateOption>().FirstOrDefault() is not TemplateOption previous)
+        {
+            return;
+        }
+
+        // Restoring the combo re-raises SelectionChanged; the loading guard makes that
+        // re-entry a no-op so the user is not prompted twice for one cancelled switch.
+        System.Threading.Interlocked.Increment(ref _loadingDepth);
+        try
+        {
+            TemplateCombo.SelectedItem = previous;
+            TemplateSelectionText.Text = previous.Id;
+            SelectedTemplateImage.Source = previous.Thumbnail;
+        }
+        finally
+        {
+            System.Threading.Interlocked.Decrement(ref _loadingDepth);
+        }
     }
 
     private async void DeviceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
