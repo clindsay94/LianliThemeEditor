@@ -1,6 +1,5 @@
 {
   "app": {
-    "title": "Éditeur de modèles LCD Lian Li V 2.1.2",
     "versionBuildFormat": "Version {0} |  Construit {1}"
   },
   "common": {

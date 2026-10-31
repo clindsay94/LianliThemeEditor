@@ -1,5 +1,6 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using LConnectPaths = ThemeEditorCSharp.Services.LConnectPaths;
 
 namespace PhoneControl;
 

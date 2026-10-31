@@ -5,6 +5,7 @@ using System.Reflection;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using LConnectPaths = ThemeEditorCSharp.Services.LConnectPaths;
 
 namespace PhoneControl;
 

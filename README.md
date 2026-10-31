@@ -6,9 +6,9 @@ The app focuses on L-Connect 3 LCD devices such as HydroShift II LCD S/C, the 8.
 
 ## Current Version
 
-`2.6.5`
+`2.8.7`
 
-Version 2.6.5 fixes PNG preview zoom/source handling for HydroShift II and Universal 8.8" themes, restores gauge needle previews, improves active-theme background loading, and updates H.264 export/apply plus Gallery companions for full-range color while preserving device-compatible orientation and resolution.
+Version 2.8.7 fixes image-layer preview quality after zoom edits and keeps the explicit orientation choice for Universal 8.8" portrait themes when creating them, changing their background, or reloading them. See `CHANGELOG.md` for the full history.
 
 ## Main Features
 
@@ -66,6 +66,7 @@ The app checks GitHub releases for updates and recognizes MSI release assets. Du
 ```text
 Assets/                  App images and device artwork
 Controls/                WPF helper controls
+docs/                    Design notes and refactor plans
 IntegratedPhoneControl/  Integrated Phone Link server and L-Connect control services
 PhoneLinkWeb/            Phone Link web UI assets and settings
 installer-wix/           WiX MSI product definition, license, and installer artwork
@@ -74,7 +75,7 @@ Models/                  App data models
 Services/                L-Connect, gallery, validation, recovery, and package services
 SupporterCs/             .NET Framework helper used for template conversion/rendering
 templates/blank-seeds/   Local seed templates used when creating blank themes
-tools/                   Diagnostic/capture helper scripts and probes
+Tests/ThemeEditor.Tests/ xUnit tests for services and language files
 ViewModels/              MVVM support classes
 MainWindow.xaml          Main WPF UI
 MainWindow.xaml.cs       Main editor workflow
