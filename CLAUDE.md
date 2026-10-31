@@ -111,7 +111,7 @@ Universal Screen 8.8" is orientation-sensitive (`1920x480` landscape / `480x1920
 
 ## Releasing
 
-The version lives in `ThemeEditorCSharp.csproj` in six places (`Version`, `AssemblyVersion`, `FileVersion`, `InformationalVersion`, `Title`, `AssemblyTitle`) and `build-msi.ps1` reads `Version` from the csproj. A release bump also means a new `## V x.y.z` section at the top of `CHANGELOG.md` and updating the "Current Version" section of `README.md` — README currently lags at 2.6.5 while the csproj/CHANGELOG are at 2.8.7, so don't trust README for the version.
+The version lives in `ThemeEditorCSharp.csproj` in six places (`Version`, `AssemblyVersion`, `FileVersion`, `InformationalVersion`, `Title`, `AssemblyTitle`) and `build-msi.ps1` reads `Version` from the csproj. A release bump also means a new `## V x.y.z` section at the top of `CHANGELOG.md` and updating the "Current Version" section of `README.md`. The csproj is the source of truth if they ever disagree.
 
 The in-app updater looks for an MSI asset on GitHub releases and runs it through `msiexec`; releases must not ship a setup EXE.
 
