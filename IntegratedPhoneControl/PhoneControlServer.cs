@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ILConnectClientService = ThemeEditorCSharp.Services.ILConnectClientService;
+using LConnectClientService = ThemeEditorCSharp.Services.LConnectClientService;
 
 namespace PhoneControl;
 
@@ -51,7 +53,7 @@ public sealed class PhoneControlServer : IAsyncDisposable
         });
         builder.Services.AddSingleton(settingsStore);
         builder.Services.AddSingleton<AccessControlService>();
-        builder.Services.AddSingleton<LConnectClient>();
+        builder.Services.AddSingleton<ILConnectClientService, LConnectClientService>();
         builder.Services.AddSingleton<LConnectControlService>();
         builder.Services.AddSingleton<PreviewFileService>();
 

@@ -28,7 +28,8 @@ public sealed class LConnectClientService : ILConnectClientService
         HttpClient client,
         string devicePath,
         string type,
-        string? body)
+        string? body,
+        CancellationToken cancellationToken = default)
     {
         if (TryGetCachedEndpoint(out var cachedPort, out var cachedMode))
         {
@@ -38,7 +39,8 @@ public sealed class LConnectClientService : ILConnectClientService
                 devicePath,
                 type,
                 body,
-                cachedMode).ConfigureAwait(false);
+                cachedMode,
+                cancellationToken).ConfigureAwait(false);
             if (IsMeaningfulServiceResponse(cachedResult) ||
                 (AcceptsEmptyResponse(type) && IsServiceEndpointResponse(cachedResult)))
             {
@@ -51,7 +53,7 @@ public sealed class LConnectClientService : ILConnectClientService
         LConnectHttpResult? lastResult = null;
         foreach (var mode in new[] { LConnectRequestMode.Legacy, LConnectRequestMode.OfficialCompatible })
         {
-            var result = await SendDeviceRequestForJsonAsync(client, DefaultServicePort, devicePath, type, body, mode).ConfigureAwait(false);
+            var result = await SendDeviceRequestForJsonAsync(client, DefaultServicePort, devicePath, type, body, mode, cancellationToken).ConfigureAwait(false);
             lastResult = result;
             if (IsMeaningfulServiceResponse(result))
             {
@@ -68,12 +70,12 @@ public sealed class LConnectClientService : ILConnectClientService
             return lastResult;
         }
 
-        var ports = await DiscoverResponsivePortsAsync(client).ConfigureAwait(false);
+        var ports = await DiscoverResponsivePortsAsync(client, cancellationToken).ConfigureAwait(false);
         foreach (var port in ports)
         {
             foreach (var mode in new[] { LConnectRequestMode.OfficialCompatible, LConnectRequestMode.Legacy })
             {
-                var result = await SendDeviceRequestForJsonAsync(client, port, devicePath, type, body, mode).ConfigureAwait(false);
+                var result = await SendDeviceRequestForJsonAsync(client, port, devicePath, type, body, mode, cancellationToken).ConfigureAwait(false);
                 lastResult = result;
                 if (IsMeaningfulServiceResponse(result) ||
                     (AcceptsEmptyResponse(type) && IsServiceEndpointResponse(result)))
@@ -87,10 +89,19 @@ public sealed class LConnectClientService : ILConnectClientService
         return lastResult ?? new LConnectHttpResult(null, null, "", "", "", "No L-Connect service port candidates were available.");
     }
 
+    public Task<LConnectHttpResult> SendServiceRequestForJsonAsync(
+        HttpClient client,
+        string action,
+        string? body,
+        CancellationToken cancellationToken = default) =>
+        SendServiceRequestForJsonAsync(client, action, null, body, cancellationToken);
+
     public async Task<LConnectHttpResult> SendServiceRequestForJsonAsync(
         HttpClient client,
         string action,
-        string? body)
+        IReadOnlyDictionary<string, string>? query,
+        string? body,
+        CancellationToken cancellationToken = default)
     {
         if (TryGetCachedEndpoint(out var cachedPort, out var cachedMode))
         {
@@ -98,8 +109,10 @@ public sealed class LConnectClientService : ILConnectClientService
                 client,
                 cachedPort,
                 action,
+                query,
                 body,
-                cachedMode).ConfigureAwait(false);
+                cachedMode,
+                cancellationToken).ConfigureAwait(false);
             if (IsMeaningfulServiceResponse(cachedResult) ||
                 (AcceptsEmptyResponse(action) && IsServiceEndpointResponse(cachedResult)))
             {
@@ -116,8 +129,10 @@ public sealed class LConnectClientService : ILConnectClientService
                 client,
                 DefaultServicePort,
                 action,
+                query,
                 body,
-                mode).ConfigureAwait(false);
+                mode,
+                cancellationToken).ConfigureAwait(false);
             lastResult = result;
             if (IsMeaningfulServiceResponse(result))
             {
@@ -134,12 +149,12 @@ public sealed class LConnectClientService : ILConnectClientService
             return lastResult;
         }
 
-        var ports = await DiscoverResponsivePortsAsync(client).ConfigureAwait(false);
+        var ports = await DiscoverResponsivePortsAsync(client, cancellationToken).ConfigureAwait(false);
         foreach (var port in ports)
         {
             foreach (var mode in new[] { LConnectRequestMode.OfficialCompatible, LConnectRequestMode.Legacy })
             {
-                var result = await SendServiceRequestForJsonAsync(client, port, action, body, mode).ConfigureAwait(false);
+                var result = await SendServiceRequestForJsonAsync(client, port, action, query, body, mode, cancellationToken).ConfigureAwait(false);
                 lastResult = result;
                 if (IsMeaningfulServiceResponse(result) ||
                     (AcceptsEmptyResponse(action) && IsServiceEndpointResponse(result)))
@@ -159,15 +174,18 @@ public sealed class LConnectClientService : ILConnectClientService
         string devicePath,
         string type,
         string? body,
-        LConnectRequestMode mode)
+        LConnectRequestMode mode,
+        CancellationToken cancellationToken)
     {
         try
         {
             var encodedPath = Uri.EscapeDataString(Convert.ToBase64String(Encoding.UTF8.GetBytes(devicePath)));
             var url = $"http://127.0.0.1:{port}/?action=Device&devicePath={encodedPath}&type={Uri.EscapeDataString(type)}";
+            LogRequestBody("Device", type, url, body, mode);
             using var content = CreateContent(type, body, mode);
-            using var response = await client.PostAsync(url, content).ConfigureAwait(false);
-            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var response = await client.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            LogResponseBody("Device", type, (int)response.StatusCode, responseBody, mode);
             return new LConnectHttpResult(
                 (int)response.StatusCode,
                 port,
@@ -178,7 +196,11 @@ public sealed class LConnectClientService : ILConnectClientService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"L-Connect request failed: {type}", ex);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                AppLogger.Error($"L-Connect request failed: {type}", ex);
+            }
+
             return new LConnectHttpResult(null, port, mode.ToString(), "", "", $"{ex.GetType().Name}: {ex.Message}");
         }
     }
@@ -187,15 +209,19 @@ public sealed class LConnectClientService : ILConnectClientService
         HttpClient client,
         int port,
         string action,
+        IReadOnlyDictionary<string, string>? query,
         string? body,
-        LConnectRequestMode mode)
+        LConnectRequestMode mode,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var url = $"http://127.0.0.1:{port}/?action={Uri.EscapeDataString(action)}";
+            var url = BuildServiceUrl(port, action, query);
+            LogRequestBody("Service", action, url, body, mode);
             using var content = CreateContent(action, body, mode);
-            using var response = await client.PostAsync(url, content).ConfigureAwait(false);
-            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var response = await client.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            LogResponseBody("Service", action, (int)response.StatusCode, responseBody, mode);
             return new LConnectHttpResult(
                 (int)response.StatusCode,
                 port,
@@ -206,29 +232,105 @@ public sealed class LConnectClientService : ILConnectClientService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"L-Connect service request failed: {action}", ex);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                AppLogger.Error($"L-Connect service request failed: {action}", ex);
+            }
+
             return new LConnectHttpResult(null, port, mode.ToString(), "", "", $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    private static HttpContent CreateContent(string type, string? body, LConnectRequestMode mode)
+    internal static string BuildServiceUrl(int port, string action, IReadOnlyDictionary<string, string>? query)
+    {
+        var builder = new StringBuilder($"http://127.0.0.1:{port}/?action={Uri.EscapeDataString(action)}");
+        if (query is null)
+        {
+            return builder.ToString();
+        }
+
+        foreach (var (key, value) in query)
+        {
+            if (string.Equals(key, "action", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            builder
+                .Append('&')
+                .Append(Uri.EscapeDataString(key))
+                .Append('=')
+                .Append(Uri.EscapeDataString(value));
+        }
+
+        return builder.ToString();
+    }
+
+    internal static HttpContent CreateContent(string type, string? body, LConnectRequestMode mode)
     {
         if (mode == LConnectRequestMode.OfficialCompatible &&
             RequiresEmptyRequestBody(type) &&
             (string.IsNullOrWhiteSpace(body) || body.Trim() == "{}"))
         {
-            var empty = new ByteArrayContent(Array.Empty<byte>());
-            empty.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json")
-            {
-                CharSet = "UTF-8"
-            };
-            return empty;
+            return CreateEmptyJsonContent();
         }
 
         return new StringContent(body ?? "", Encoding.UTF8, "application/json");
     }
 
-    private static bool RequiresEmptyRequestBody(string type) =>
+    // Phone Link's fan-lighting trace; it lives outside the editor log and nothing collects it.
+    private static void LogRequestBody(string channel, string type, string url, string? body, LConnectRequestMode mode)
+    {
+        if (!ShouldLogBody(channel, type))
+        {
+            return;
+        }
+
+        AppendBodyLog($"""
+            [{DateTimeOffset.Now:O}] REQUEST {channel}:{type} mode={mode}
+            URL: {url}
+            BODY: {body}
+
+            """);
+    }
+
+    private static void LogResponseBody(string channel, string type, int statusCode, string body, LConnectRequestMode mode)
+    {
+        if (!ShouldLogBody(channel, type))
+        {
+            return;
+        }
+
+        AppendBodyLog($"""
+            [{DateTimeOffset.Now:O}] RESPONSE {channel}:{type} mode={mode} status={statusCode}
+            BODY: {body}
+
+            """);
+    }
+
+    internal static bool ShouldLogBody(string channel, string type) =>
+        type.Equals("FanLightingSetting", StringComparison.OrdinalIgnoreCase) ||
+        type.Equals("FanMergeLightingSetting", StringComparison.OrdinalIgnoreCase) ||
+        (channel.Equals("Service", StringComparison.OrdinalIgnoreCase) &&
+         type.Equals("LWireless", StringComparison.OrdinalIgnoreCase));
+
+    private static void AppendBodyLog(string text)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Lian-Li Phone Link");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "lconnect-body.log"), text, Encoding.UTF8);
+        }
+        catch
+        {
+            // Diagnostics must never break lighting control.
+        }
+    }
+
+    internal static bool RequiresEmptyRequestBody(string type) =>
         type.Equals("ReloadAssets", StringComparison.OrdinalIgnoreCase) ||
         type.Equals("SyncControllerList", StringComparison.OrdinalIgnoreCase) ||
         type.Equals("GetControllerListTimestamp", StringComparison.OrdinalIgnoreCase) ||
@@ -253,12 +355,13 @@ public sealed class LConnectClientService : ILConnectClientService
     private static bool IsServiceEndpointResponse(LConnectHttpResult result) =>
         result.StatusCode.HasValue && result.StatusCode is not 404 and not 405;
 
-    private static bool AcceptsEmptyResponse(string action) =>
+    internal static bool AcceptsEmptyResponse(string action) =>
         action.Equals("ReloadAssets", StringComparison.OrdinalIgnoreCase) ||
         action.Equals("SaveProfile", StringComparison.OrdinalIgnoreCase) ||
         action.Equals("StopVideo", StringComparison.OrdinalIgnoreCase) ||
         action.Equals("ApplyScreenContent", StringComparison.OrdinalIgnoreCase) ||
-        action.Equals("SyncControllerList", StringComparison.OrdinalIgnoreCase);
+        action.Equals("SyncControllerList", StringComparison.OrdinalIgnoreCase) ||
+        action.Equals("LWireless", StringComparison.OrdinalIgnoreCase);
 
     private void CacheEndpoint(int port, LConnectRequestMode mode)
     {
@@ -295,8 +398,13 @@ public sealed class LConnectClientService : ILConnectClientService
         return false;
     }
 
-    private static async Task<IReadOnlyList<int>> DiscoverResponsivePortsAsync(HttpClient client)
+    private static async Task<IReadOnlyList<int>> DiscoverResponsivePortsAsync(HttpClient client, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Array.Empty<int>();
+        }
+
         var ports = new List<int>();
         void Add(int port)
         {
@@ -319,21 +427,22 @@ public sealed class LConnectClientService : ILConnectClientService
         var probes = ports.Select(async port => new
         {
             Port = port,
-            Responsive = await IsLConnectServicePortAsync(client, port).ConfigureAwait(false)
+            Responsive = await IsLConnectServicePortAsync(client, port, cancellationToken).ConfigureAwait(false)
         });
         var results = await Task.WhenAll(probes).ConfigureAwait(false);
         return results.Where(result => result.Responsive).Select(result => result.Port).ToArray();
     }
 
-    private static async Task<bool> IsLConnectServicePortAsync(HttpClient client, int port)
+    private static async Task<bool> IsLConnectServicePortAsync(HttpClient client, int port, CancellationToken cancellationToken)
     {
         try
         {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
             using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/?action=Ping")
             {
                 Content = CreateEmptyJsonContent()
             };
-            using var timeout = new CancellationTokenSource(ProbeTimeout);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
@@ -452,7 +561,7 @@ public sealed class LConnectClientService : ILConnectClientService
         }
     }
 
-    private enum LConnectRequestMode
+    internal enum LConnectRequestMode
     {
         Legacy,
         OfficialCompatible
