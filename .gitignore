@@ -20,6 +20,8 @@ _project-archive/
 .vs/
 .idea/
 .vscode/
+# A shell that doesn't expand ~ creates a literal ~ directory here
+/~/
 
 # Local investigation/work artifacts
 compare_extract/
