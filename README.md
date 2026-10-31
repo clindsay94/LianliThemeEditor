@@ -74,7 +74,6 @@ Models/                  App data models
 Services/                L-Connect, gallery, validation, recovery, and package services
 SupporterCs/             .NET Framework helper used for template conversion/rendering
 templates/blank-seeds/   Local seed templates used when creating blank themes
-tools/                   Diagnostic/capture helper scripts and probes
 ViewModels/              MVVM support classes
 MainWindow.xaml          Main WPF UI
 MainWindow.xaml.cs       Main editor workflow
