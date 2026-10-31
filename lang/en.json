@@ -547,6 +547,12 @@
     "sendingLayersBackward": "Sending selected layer(s) backward...",
     "bringingLayersForward": "Bringing selected layer(s) forward..."
   },
+  "pending": {
+    "editedLayers": "{0} edited layer(s)",
+    "deletes": "{0} queued deletion(s)",
+    "moves": "{0} queued reorder(s)",
+    "duplicates": "{0} queued duplicate(s)"
+  },
   "messages": {
     "loadFailed": "Load failed",
     "saveFailed": "Save failed",
@@ -554,6 +560,10 @@
     "removeLayerConfirm": "Remove layer {0}?",
     "removeLayersConfirm": "Remove {0} selected layers?",
     "removeLayerTitle": "Remove layer",
+    "unappliedWorkTitle": "Unapplied changes",
+    "unappliedWorkConfirm": "You have unapplied changes: {0}.\n\n{1}\n\nYes = apply them first, No = discard them, Cancel = stay here.",
+    "switchingTemplateDiscards": "Switching to template \"{0}\" reloads the editor and drops them.",
+    "closingDiscards": "Closing the editor drops them.",
     "removeFailed": "Remove failed",
     "shadowFailed": "Shadow failed",
     "addFailed": "Add failed",
