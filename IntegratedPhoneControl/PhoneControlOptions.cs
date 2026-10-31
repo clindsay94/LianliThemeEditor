@@ -11,17 +11,6 @@ public sealed class PhoneControlOptions
 
 public sealed record ApiError(string Code, string Message);
 
-public sealed record LConnectHttpResult(
-    int? StatusCode,
-    int? Port,
-    string RequestMode,
-    string ReasonPhrase,
-    string Body,
-    string Error)
-{
-    public bool IsHttpSuccess => StatusCode is >= 200 and <= 299;
-}
-
 public sealed record DeviceInfo(
     string Id,
     string Name,

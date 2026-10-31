@@ -5,6 +5,7 @@ using System.Reflection;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using ILConnectClientService = ThemeEditorCSharp.Services.ILConnectClientService;
 using LConnectPaths = ThemeEditorCSharp.Services.LConnectPaths;
 
 namespace PhoneControl;
@@ -22,9 +23,9 @@ public sealed class LConnectControlService
     private static readonly Lazy<IReadOnlyDictionary<int, LConnectEffectMetadata>> WirelessMergeEffectMetadata = new(LConnectEffectMetadataReader.ReadWirelessMergeMetadata);
     private static readonly Lazy<IReadOnlyList<int>> WirelessMergeEffectOrder = new(LConnectEffectMetadataReader.ReadWirelessMergeEffectOrder);
     private static readonly Lazy<IReadOnlyList<int>> Tlv2MergeEffectOrder = new(LConnectEffectMetadataReader.ReadTlv2MergeEffectOrder);
-    private readonly LConnectClient lConnectClient;
+    private readonly ILConnectClientService lConnectClient;
 
-    public LConnectControlService(LConnectClient lConnectClient)
+    public LConnectControlService(ILConnectClientService lConnectClient)
     {
         this.lConnectClient = lConnectClient;
     }

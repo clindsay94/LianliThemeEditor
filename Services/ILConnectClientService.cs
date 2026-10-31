@@ -8,10 +8,19 @@ public interface ILConnectClientService
         HttpClient client,
         string devicePath,
         string type,
-        string? body);
+        string? body,
+        CancellationToken cancellationToken = default);
 
     Task<LConnectHttpResult> SendServiceRequestForJsonAsync(
         HttpClient client,
         string action,
-        string? body);
+        string? body,
+        CancellationToken cancellationToken = default);
+
+    Task<LConnectHttpResult> SendServiceRequestForJsonAsync(
+        HttpClient client,
+        string action,
+        IReadOnlyDictionary<string, string>? query,
+        string? body,
+        CancellationToken cancellationToken = default);
 }
