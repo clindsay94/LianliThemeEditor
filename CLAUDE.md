@@ -17,11 +17,23 @@ dotnet tool restore                                     # restores WiX 7 from do
 
 dotnet build .\ThemeEditorCSharp.csproj -p:SkipSupporterBuild=true   # skip the net48 worker build
 dotnet build .\SupporterCs\SupporterCs.csproj                        # worker only
+
+dotnet test .\Tests\ThemeEditor.Tests\ThemeEditor.Tests.csproj       # xUnit v3; skips the worker build
 ```
 
 Build output goes to `bin_build/` (`BaseOutputPath`), not `bin/`.
 
-There is no test project and no linter config. Verification is manual: build, run, and exercise the affected tab. Most device workflows (import/export/apply) need L-Connect 3 installed and running; gallery browsing and package validation work without it.
+### Tests
+
+`Tests/ThemeEditor.Tests` covers the services outside MainWindow and the `lang/*.json` files. CI (`.github/workflows/tests.yml`) runs it on Windows for pushes and PRs that touch more than `templates/` or Markdown. MainWindow itself is still untested; `docs/refactor/mainwindow-split-plan.md` is the plan for changing that.
+
+- The test project lives inside the root project's folder. The root csproj excludes `Tests\**`, so keep new test code under `Tests\`.
+- App types are reachable through `InternalsVisibleTo("ThemeEditor.Tests")`, so make a helper `internal`, never `public`, when you extract it for testing.
+- Service tests are characterization tests: they pin today's behaviour. A test commented `// Current behaviour; looks wrong` marks a suspected bug. Fix the code and flip the assertion in the same commit.
+- `LanguageFileTests.MissingKeyBaseline` caps untranslated keys per locale. Adding an English key without translating it fails the test; lower the numbers when translations land.
+- No test may touch the network, the registry, ProgramData/LocalAppData or a running L-Connect.
+
+There is no linter config. Anything the tests don't cover still needs manual verification: build, run, and exercise the affected tab. Most device workflows (import/export/apply) need L-Connect 3 installed and running; gallery browsing and package validation work without it.
 
 `installer.iss` (Inno Setup) is legacy — public releases ship the WiX MSI only.
 
