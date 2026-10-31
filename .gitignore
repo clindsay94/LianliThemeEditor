@@ -22,6 +22,9 @@ _project-archive/
 .vscode/
 # A shell that doesn't expand ~ creates a literal ~ directory here
 /~/
+# Written by gitnexus analyze / bd setup; Claude Code reads CLAUDE.md and user-scope skills
+AGENTS.md
+.claude/skills/gitnexus/
 
 # Local investigation/work artifacts
 compare_extract/
