@@ -35,7 +35,7 @@ Build output goes to `bin_build/` (`BaseOutputPath`), not `bin/`.
 
 There is no linter config. Anything the tests don't cover still needs manual verification: build, run, and exercise the affected tab. Most device workflows (import/export/apply) need L-Connect 3 installed and running; gallery browsing and package validation work without it.
 
-`installer.iss` (Inno Setup) is legacy — public releases ship the WiX MSI only.
+Public releases ship the WiX MSI only. Old releases used Inno Setup, which is why `installer-wix/Product.wxs` still looks up the Inno `_is1` uninstall key for upgrades.
 
 ## Two-project architecture
 
