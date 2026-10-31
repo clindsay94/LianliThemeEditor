@@ -81,8 +81,9 @@ public partial class MainWindow : Window
     private static readonly HttpClient SharedHttpClient = CreateSharedHttpClient();
     private const string GitHubRepoUrl = "https://github.com/ozgurce/LianliThemeEditor";
     private const string GitHubIssuesUrl = "https://github.com/ozgurce/LianliThemeEditor/issues";
-    private const string GitHubLatestReleaseApiUrl = "https://api.github.com/repos/ozgurce/LianliThemeEditor/releases/latest";
-    private const string GitHubReleasesUrl = "https://github.com/ozgurce/LianliThemeEditor/releases";
+    // Fork builds update from the fork: upstream's MSI shares our UpgradeCode and would replace this build.
+    private const string GitHubLatestReleaseApiUrl = "https://api.github.com/repos/clindsay94/LianliThemeEditor/releases/latest";
+    private const string GitHubReleasesUrl = "https://github.com/clindsay94/LianliThemeEditor/releases";
     private static readonly MethodInfo? ComboBoxUpdateSelectionBoxItemMethod =
         typeof(ComboBox).GetMethod("UpdateSelectionBoxItem", BindingFlags.Instance | BindingFlags.NonPublic);
 

@@ -6,9 +6,9 @@ The app focuses on L-Connect 3 LCD devices such as HydroShift II LCD S/C, the 8.
 
 ## Current Version
 
-`2.8.7`
+`2.9.2`
 
-Version 2.8.7 fixes image-layer preview quality after zoom edits and keeps the explicit orientation choice for Universal 8.8" portrait themes when creating them, changing their background, or reloading them. See `CHANGELOG.md` for the full history.
+Version 2.9.2 is the first release of this fork. It keeps unapplied layer edits across reloads, fixes deleted layers coming back when a layer is added, and checks this fork's GitHub releases for updates instead of upstream's. See `CHANGELOG.md` for the full history.
 
 ## Main Features
 

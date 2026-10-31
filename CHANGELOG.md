@@ -1,5 +1,16 @@
 # Changelog
 
+## V 2.9.2
+
+First release of the clindsay94 fork. The version jumps past upstream's 2.9.1 so this MSI upgrades an installed upstream build.
+
+- The in-app updater now checks this fork's GitHub releases. It used to check upstream's, whose MSI shares the same UpgradeCode and would have replaced the fork build.
+- Fixed deleted layers coming back when a new layer was added, and the loading flag that could get stuck and ignore every template selection.
+- Unapplied layer edits now survive reloads, and the editor warns before discarding them. Themes no longer rotate unexpectedly on reload.
+- Phone Link now uses the editor's shared L-Connect client and paths instead of its own copies.
+- Added an automated test project (`Tests/ThemeEditor.Tests`) with a Windows CI workflow.
+- Removed the legacy Inno Setup script, unused tools, unused language keys and stale build excludes.
+
 ## V 2.8.7
 
 - Fixed image-layer preview quality after zoom edits by resolving `GraphImage` previews from the original image file when the loaded media path points to a zoom-baked embedded bitmap.
