@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    # Gallery publishing commits only touch templates/, so don't spend a Windows runner on them.
+    paths-ignore: ['templates/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['templates/**', '**/*.md']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test Tests/ThemeEditor.Tests/ThemeEditor.Tests.csproj -c Release --logger "trx;LogFileName=results.trx"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: Tests/ThemeEditor.Tests/TestResults/*.trx

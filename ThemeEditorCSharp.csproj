@@ -24,7 +24,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseAppHost>true</UseAppHost>
     <BaseOutputPath>bin_build\</BaseOutputPath>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Backups\**;artifacts\**;outputs\**;tmp\**;tmp_*\**;release\**;gallery_fix_work\**;cloudflare\**;tools\**;_project-archive\**;_cleanup_20260722\**;PhoneControl\**;compare_extract\**;dim_probe\**;lc_v2_repack\**;lc_v2_verify_idnamed\**;themePic_local_fix\**;video_work\**;tmp_video_frames\**;tmp_video_frames_cv2\**;bin\**;bin_build\**;obj\**;obj_build\**;active_*.json;tmp_*;firmwares-*.json;*.fw;extracted_from_lianli88*.png</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Backups\**;artifacts\**;outputs\**;tmp\**;tmp_*\**;release\**;gallery_fix_work\**;cloudflare\**;tools\**;_project-archive\**;_cleanup_20260722\**;PhoneControl\**;compare_extract\**;dim_probe\**;lc_v2_repack\**;lc_v2_verify_idnamed\**;themePic_local_fix\**;video_work\**;tmp_video_frames\**;tmp_video_frames_cv2\**;bin\**;bin_build\**;obj\**;obj_build\**;Tests\**;active_*.json;tmp_*;firmwares-*.json;*.fw;extracted_from_lianli88*.png</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -54,8 +54,8 @@
     <Content Include="editor.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="PhoneLinkWeb\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="templates\blank-seeds\*.template" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Include="SupporterCs\bin\$(Configuration)\net48\LianLiThemeEditor.TemplateWorker.exe" Link="LianLiThemeEditor.TemplateWorker.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <None Include="SupporterCs\bin\$(Configuration)\net48\LianLiThemeEditor.TemplateWorker.exe.config" Link="LianLiThemeEditor.TemplateWorker.exe.config" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="SupporterCs\bin\$(Configuration)\net48\LianLiThemeEditor.TemplateWorker.exe" Link="LianLiThemeEditor.TemplateWorker.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(SkipSupporterBuild)' != 'true'" />
+    <None Include="SupporterCs\bin\$(Configuration)\net48\LianLiThemeEditor.TemplateWorker.exe.config" Link="LianLiThemeEditor.TemplateWorker.exe.config" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(SkipSupporterBuild)' != 'true'" />
   </ItemGroup>
 
   <ItemGroup>
